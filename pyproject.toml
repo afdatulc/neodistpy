@@ -1,0 +1,27 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "neodistpy"
+version = "0.1.1"
+description = "Neo-normal Distributions for PyMC and Bambi"
+authors = [
+    { name = "Achmad Syahrul Choir", email = "madsyair@stis.ac.id" }
+]
+readme = "README.md"
+requires-python = ">=3.8"
+dependencies = [
+    "pymc>=5.0",
+    "bambi>=0.13",
+    "numpy",
+    "scipy",
+    "pytensor"
+]
+
+[project.urls]
+Homepage = "https://github.com/madsyair/neodistpy"
+Issues = "https://github.com/madsyair/neodistpy/issues"
+
+[tool.setuptools.packages.find]
+where = ["."]

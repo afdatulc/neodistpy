@@ -1,0 +1,202 @@
+Metadata-Version: 2.4
+Name: neodistpy
+Version: 0.1.1
+Summary: Distribusi Neo-normal untuk PyMC dan Bambi
+Author-email: Achmad Syahrul Choir <madsyair@stis.ac.id>
+Project-URL: Homepage, https://github.com/madsyair/neodistpy
+Project-URL: Issues, https://github.com/madsyair/neodistpy/issues
+Requires-Python: >=3.8
+Description-Content-Type: text/markdown
+Requires-Dist: pymc>=5.0
+Requires-Dist: bambi>=0.13
+Requires-Dist: numpy
+Requires-Dist: scipy
+Requires-Dist: pytensor
+
+# neodistpy: Neo-Normal Distribution for Python
+
+## Overview 
+
+The `neodistpy` package provides functions for calculating the **log-probability**, **log-cumulative**, **quantile**, and **random number** of the neo-normal distribution. It is designed to work seamlessly with [PyMC](https://www.pymc.io/) for Bayesian modeling and [Bambi](https://bambinos.github.io/bambi/) as a custom family in regression models.
+
+The package implements the following distributions: Modified to be Stable as Normal from Burr (MSNBurr), Modified to be Stable as Normal from Burr-IIa (MSNBurr-IIa), and Fernandez Steel Skew t(FSST)
+
+
+References:
+- A. S. Choir. (2020). Distribusi neo-normal baru dan karakteristiknya. Institut Teknologi Sepuluh Nopember. *Unpublished Dissertation*. 
+- N. Iriawan. (2000). Computationally intensive approaches to inference in neo-normal linear models. Curtin University of Technology. *Unpublished Dissertation*.
+- C. Fernández and M. F. J. Steel. (2003). On bayesian modeling of fat tails and skewness.  Journal of the American Statistical Association. DOI: [10.2307/2669632](https://doi.org/10.2307/2669632)
+- R. A. Rigby et. al. (2019). Distributions for modeling location, scale, and shape-using GAMLSS in R, 1st ed. New York: Chapman and Hall/CRC.
+
+
+## Installation
+Install the stable release from PyPI:
+```bash
+pip install neodistpy
+```
+
+Alternatively, install the latest development version directly from GitHub:
+```bash
+pip install git+https://github.com/afdatulc/neodistpy.git
+```
+
+## Dependencies 
+Neodistpy requires compatible versions of PyMC, Bambi, NumPy, SciPy, and PyTensor. These dependencies are specified in `pyproject.toml` and should be installed automatically when you install Bambi; no further action should be required.
+
+## Example 
+Import the distributions and custom family objects provided by neodistpy for use in PyMC and Bambi:
+```python
+from neodistpy import fsst, msnburr, msnburr_iia
+from neodistpy import fsst_family, msnburr_family, msnburr_iia_family
+```
+
+### Manual Evaluation of PDF, CDF, Quantile
+The following example illustrates how to manually evaluate the log PDF, CDF, and quantile for the `fsst` distribution using PyTensor:
+```python
+import pymc as pm
+import pytensor.tensor as pt
+import numpy as np
+from neodistpy import fsst
+
+mu = pt.scalar('mu')
+sigma = pt.scalar('sigma')
+nu = pt.scalar('nu')
+alpha = pt.scalar('alpha')
+x = pt.scalar('x')
+p = pt.scalar('p')
+
+rv = fsst.dist(mu=mu, sigma=sigma, nu=nu, alpha=alpha)
+
+logp_expr = pm.logp(rv, x)
+pdf = np.exp(logp_expr.eval({mu: 0.0, sigma: 1.0, nu: 5, alpha: 2, x: 0.5}))
+
+logcdf_expr = pm.logcdf(rv, x)
+cdf = np.exp(logcdf_expr.eval({mu: 0.0, sigma: 1.0, nu: 5, alpha: 2, x: 0.5}))
+
+quantile_expr = fsst.icdf(p, mu, sigma, nu, alpha)
+quantile = quantile_expr.eval({p: 0.9, mu: 0.0, sigma: 1.0, nu: 5, alpha: 2})
+
+print("PDF        :", pdf)
+print("CDF        :", cdf)
+print("Quantile   :", quantile)
+```
+
+```
+PDF        : 0.2925760341247546
+CDF        : 0.3499726954047014
+Quantile   : 3.681835316402445
+```
+
+### Compiled Quantile Function
+To direct evaluation, distribution functions can be compiled using `pm.compile` for 
+improved efficiency, especially within iterative workflows:
+```python
+rv_logp = pm.logp(rv, x)
+rv_logp_fn = pm.compile([x, mu, sigma, nu, alpha], rv_logp)
+logpdf = rv_logp_fn(x=0.5, mu=0, sigma=1, nu=5, alpha=2)
+print("PDF :", logpdf)
+
+rv_quantile = fsst.icdf(p, mu, sigma, nu, alpha)
+rv_quantile_fn = pm.compile([p, mu, sigma, nu, alpha], rv_quantile)
+q = rv_quantile_fn(p=0.9, mu=0, sigma=1, nu=1, alpha=2)
+print("Quantile:", q)
+```
+
+```
+PDF     : -1.2290307003646053
+Quantile: 10.054678984251698
+```
+
+### Using with PyMC
+The following example demonstrates how to implement the `fsst` distribution 
+in a PyMC model:
+```python
+import pymc as pm
+from neodistpy import fsst
+
+with pm.Model():
+    mu = pm.Normal("mu", 0, 1)
+    sigma = pm.HalfCauchy("sigma", 1)
+    alpha = pm.Gamma("alpha", 2, 1)
+    nu = pm.Gamma("nu", 2, 1)
+
+    y = fsst("y", mu, sigma, nu, alpha, observed=np.random.randn(100))
+```
+
+
+### Full Sampling Example
+The following example illustrates a complete PyMC model using the fsst distribution and performing posterior sampling:
+```python
+with pm.Model():
+    mu = pm.Normal('mu', 0, 5)
+    sigma = pm.HalfCauchy('sigma', 5)
+    alpha = pm.Gamma('alpha', 2, 1.5)
+    nu = pm.Gamma('nu', 2, 15)
+
+    fsst('FSST', mu, sigma, nu, alpha, observed=np.random.randn(100))
+    trace= pm.sample()
+
+import arviz as az
+az.summary(trace, round_to=3, hdi_prob=0.95)
+```
+
+```
+          mean     sd  hdi_2.5%  hdi_97.5%  mcse_mean  mcse_sd   ess_bulk  ess_tail  r_hat
+alpha     0.887  0.159     0.614     1.185      0.007    0.011   816.052   533.814   1.002
+mu        0.264  0.196    -0.097     0.649      0.007    0.009   844.192   666.099   1.004
+nu        1.270  0.218     0.854     1.656      0.006    0.005  1177.301  1176.626   1.000
+sigma     0.582  0.079     0.423     0.733      0.002    0.002  1296.380  1240.416   1.001
+```
+
+### Using with Bambi
+The `fsst` distribution is integrated as a custom family within this package, allowing direct use in Bambi models:
+```python
+import bambi as bmb
+import pymc as pm
+import numpy as np
+import pandas as pd 
+from neodistpy import fsst_family
+
+# Example dataset
+np.random.seed(123)
+df = pd.DataFrame({
+    "x": np.random.normal(size=100),
+    "y": 0.5 + 2 * np.random.normal(size=100)
+})
+
+model = bmb.Model("y ~ x", data=df, family=fsst_family)
+model
+idata = model.fit()
+
+import arviz as az
+az.summary(idata)
+```
+
+```
+       Formula: y ~ x
+        Family: fsst
+          Link: mu = identity
+  Observations: 100
+        Priors: 
+    target = mu
+        Common-level effects
+            Intercept ~ Normal(mu: 0.0, sigma: 2.5007)
+            x ~ Normal(mu: 0.0, sigma: 2.2158)
+        
+        Auxiliary parameters
+            nu ~ Gamma(alpha: 2.0, beta: 0.05)
+            alpha ~ Gamma(alpha: 2.0, beta: 15.0)
+            sigma ~ HalfCauchy(beta: 5.0)
+------
+* To see a plot of the priors call the .plot_priors() method.
+* To see a summary or plot of the posterior pass the object returned by .fit() to az.summary() or az.plot_trace()
+```
+
+```
+               mean     sd  hdi_3%  hdi_97%  mcse_mean  mcse_sd  ess_bulk  ess_tail  r_hat
+Intercept     1.086  0.378   0.447    1.830      0.011    0.009    1258.0    1058.0    1.0
+alpha         0.805  0.093   0.640    0.987      0.003    0.002    1275.0    1130.0    1.0
+nu           33.050 26.771   2.845   81.257      0.626    0.814    1213.0     924.0    1.0
+sigma         1.812  0.178   1.489    2.181      0.006    0.006    1068.0     688.0    1.0
+x             0.004  0.174  -0.295    0.339      0.004    0.004    2096.0    1406.0    1.0
+```
