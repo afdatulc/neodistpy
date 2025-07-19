@@ -13,3 +13,4 @@ neodistpy
 
    usage
    changelog
+   tutorial
